@@ -9,13 +9,14 @@
   <ItemDefinitionGroup>
     <Link>
       <AdditionalLibraryDirectories>$(SolutionDir)$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>libCINT.lib;libCore.lib;libMatrix.lib;libRooFitCore.lib;libRooFit.lib;libRooStats.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>libCINT.lib;libHist.lib;libRIO.lib;libCore.lib;libMathCore.lib;libMatrix.lib;libRooFitCore.lib;libRooFit.lib;libRooStats.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <ClCompile>
       <ForcedIncludeFiles>w32pragma.h</ForcedIncludeFiles>
       <UndefinePreprocessorDefinitions>
       </UndefinePreprocessorDefinitions>
       <ErrorReporting />
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup />

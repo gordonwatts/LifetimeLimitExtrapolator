@@ -16,6 +16,12 @@ $RECYCLE.BIN/
 
 # VS2010
 *.suo
+Debug/*
+Release/*
+**/Debug/*
+**/Release/*
+*.opensdf
+*.sdf
 
 # =========================
 # Operating System Files

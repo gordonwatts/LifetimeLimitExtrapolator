@@ -110,12 +110,28 @@ private:
 	}
 };
 
+#define sample_100_25
+
 int main()
 {
+#ifdef sample_600_150
 	// Config parameters (shoudl be loaded from a file).
 	string dataset = "600_150_plots_integral_10m_1500GeV_new";
 	double generated_ctau = 1.7; // meters (from the note appendix)
 	double vpion_mass = 150; // GeV.
+#endif
+#ifdef sample_900_150
+	// Config parameters (shoudl be loaded from a file).
+	string dataset = "900_150_plots_integral_10m_1500GeV_new";
+	double generated_ctau = 1.3; // meters (from the note appendix)
+	double vpion_mass = 150; // GeV.
+#endif
+#ifdef sample_100_25
+	// Config parameters (shoudl be loaded from a file).
+	string dataset = "159221_100_25_plots_integral_10m_1500GeV_new";
+	double generated_ctau = 1.25; // meters (from the note appendix)
+	double vpion_mass = 25; // GeV.
+#endif
 
 	double lxy_min = 0;
 	double lxy_max = 10000 / 1000.;

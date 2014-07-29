@@ -14,14 +14,17 @@ using namespace std;
 function<pair<double, double>(void)> generate_from_2d_hist(auto_ptr<TFile> &f, const string &hname);
 pair<double, double> calc_lxy(const pair<double, double> &pt, const pair<double, double> &ctau, const double &mass);
 function<double(pair<double,double>)> get_2d_lookup_function(auto_ptr<TFile> &f, const string &hname);
+double get_hist_entries(auto_ptr<TFile> &f, const string &hnamne);
+double get_hist_integral(auto_ptr<TFile> &f, const string &hnamne);
 
-TH1F *make_clone(TH1F *original, const string &search, const string &replace);
+template <class T>
+T *make_clone(T *original, const string &search, const string &replace);
 
 int main()
 {
 	// Config parameters (shoudl be loaded from a file).
 	string dataset = "600_150_plots_10m_50bin_700GeV";
-	double generated_ctau = 1.3; // meters (from the note appendix)
+	double generated_ctau = 1.7; // meters (from the note appendix)
 	double vpion_mass = 150; // GeV.
 
 	double lxy_min = 0;
@@ -54,6 +57,7 @@ int main()
 
 	auto h_pt1 = new TH1F("pt_1", "p_T of vpion 1", 600, 0.0, 600.0);
 	auto h_pt2 = make_clone(h_pt1, "1", "2");
+	auto h_pt_map = new TH2F("pt_map", "p_T map of vpion 1 and 2", 600, 0.0, 600.0, 600, 0.0, 600.0);
 
 	auto h_lxy1 = new TH1F("lxy1", "lxy of vpion 1", 20*20, 0.0, 20.0);
 	auto h_lxy2 = make_clone(h_lxy1, "1", "2");
@@ -74,9 +78,11 @@ int main()
 
 	auto h_lxy_weight_map = new TH2F("event_weight_map", "Map of efficiencies", 20 * 10, 0.0, 10.0, 20 * 10, 0.0, 10.0);
 	auto h_lxy_map = new TH2F("event_map", "Map of lxy pairs", 20 * 10, 0.0, 10.0, 20 * 10, 0.0, 10.0);
+	auto h_pt_weight_map = make_clone(h_pt_map, "map", "weightmap");
 
 	// Run the toy
 	const int toy_runs = 100000;
+	double eff_sum = 0.0;
 	for (int i_toy = 0; i_toy < toy_runs; i_toy++) {
 		// We need the pT and the lifetimes of the objects.
 		auto lt = generate_lifetime();
@@ -86,6 +92,7 @@ int main()
 		auto pt = generate_pt();		
 		h_pt1->Fill(pt.first);
 		h_pt2->Fill(pt.second);
+		h_pt_map->Fill(pt.first, pt.second);
 
 		// Straight conversion into the actual decay length.
 		auto lxy = calc_lxy(pt, lt, vpion_mass);
@@ -111,10 +118,24 @@ int main()
 				h_lxy1_weight->Fill(lxy.second, event_eff);
 				h_lxy_weight_map->Fill(lxy.first, lxy.second, event_eff);
 				h_lxy_map->Fill(lxy.first, lxy.second);
+				h_pt_weight_map->Fill(pt.first, pt.second, event_eff);
+				eff_sum += event_eff;
 			}
 		}
-
 	}
+
+	// Calculate the final efficiency
+
+	double sample_eff = eff_sum / toy_runs;
+	cout << "Sample efficiency is " << sample_eff << endl;
+
+	auto total_events_in_sample = get_hist_entries(input_file, "MC_Truth/genHiggsEta");
+	double expected_events = total_events_in_sample * sample_eff;
+	cout << "Sample expected passing events is " << expected_events << endl;
+
+	double actual_events = get_hist_integral(input_file, "Final_events/ana_vpi_Lxy1_Lxy2");
+	double delta = (expected_events - actual_events) / actual_events;
+	cout << "Actual events passing is " << actual_events << "(" << delta << " difference)" << endl;
 
 	// Make sure everything is correctly saved.
 	hist_output->Write();
@@ -123,7 +144,8 @@ int main()
 }
 
 // Helper function for making duplicate identical histograms.
-TH1F *make_clone(TH1F *original, const string &search, const string &replace)
+template<class T>
+T *make_clone(T *original, const string &search, const string &replace)
 {
 	TString newName(original->GetName());
 	TString newTitle(original->GetTitle());
@@ -131,7 +153,7 @@ TH1F *make_clone(TH1F *original, const string &search, const string &replace)
 	newName.ReplaceAll(search.c_str(), replace.c_str());
 	newTitle.ReplaceAll(search.c_str(), replace.c_str());
 
-	TH1F *result = (TH1F*)original->Clone(newName);
+	T *result = (T*)original->Clone(newName);
 	result->SetTitle(newTitle);
 	return result;
 }
@@ -173,4 +195,24 @@ function<double(pair<double, double>)> get_2d_lookup_function(auto_ptr<TFile> &f
 
 		return h->GetBinContent(i_bin_1, i_bin_2);
 	};
+}
+
+// Return the number of entries in this file
+double get_hist_entries(auto_ptr<TFile> &f, const string &hname)
+{
+	auto h = (TH1*)f->Get(hname.c_str());
+	if (h == nullptr) {
+		throw runtime_error(string("Unable to load histogram") + hname);
+	}
+	return h->GetEntries();
+}
+
+// Calculate the integral for a histogram
+double get_hist_integral(auto_ptr<TFile> &f, const string &hname)
+{
+	auto h = (TH1*)f->Get(hname.c_str());
+	if (h == nullptr) {
+		throw runtime_error(string("Unable to load histogram") + hname);
+	}
+	return h->Integral();
 }

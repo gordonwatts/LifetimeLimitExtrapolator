@@ -20,10 +20,100 @@ double get_hist_integral(auto_ptr<TFile> &f, const string &hnamne);
 template <class T>
 T *make_clone(T *original, const string &search, const string &replace);
 
+// Helper for extracting and copying binning
+class axis_binning {
+public:
+	int nbins;
+	double lowx;
+	double highx;
+
+	axis_binning(int nb, double lx, double hx)
+		: nbins(nb), lowx(lx), highx(hx)
+	{}
+	axis_binning(TH1F *h)
+	{
+		PopulateFromAxis(h->GetXaxis());
+	}
+	axis_binning(TH2F *h, int axis)
+	{
+		if (axis == 1) {
+			PopulateFromAxis(h->GetXaxis());
+		}
+		else {
+			PopulateFromAxis(h->GetYaxis());
+		}
+	}
+private:
+	void PopulateFromAxis(TAxis *a)
+	{
+		nbins = a->GetNbins();
+		lowx = a->GetBinLowEdge(1);
+		highx = a->GetBinUpEdge(nbins);
+	}
+};
+
+pair<axis_binning, axis_binning> get_binning_from_hist(auto_ptr<TFile> &f, const string &hname);
+
+// Plots 2d plots, and 2 1d plots.
+class plot_2d {
+public:
+	plot_2d(const string &name, const string &title, 
+		const string &name_1, const string &title_1, int nbinsX, double lowx, double highx,
+		const string &name_2, const string &title_2, int nbinxY, double lowy, double highy) {
+		Book(name, title, name_1, title_1, nbinsX, lowx, highx, name_2, title_2, nbinxY, lowy, highy);
+	}
+	plot_2d(const string &name, const string &title,
+		const string &name_1, const string &title_1, const axis_binning &a1,
+		const string &name_2, const string &title_2, const axis_binning &a2)
+	{
+		Book(name, title, name_1, title_1, a1.nbins, a1.lowx, a1.highx, name_2, title_2, a2.nbins, a2.lowx, a2.highx);
+	}
+
+	void Fill(pair<double, double> p, double weight = 1.0) {
+		_axis1->Fill(p.first, weight);
+		_axis2->Fill(p.second, weight);
+		_map->Fill(p.first, p.second, weight);
+	}
+
+	plot_2d Clone(const string &search, const string &replace) {
+		auto newNameX = TString(_axis1->GetName()).ReplaceAll(search.c_str(), replace.c_str());
+		auto newNameY = TString(_axis2->GetName()).ReplaceAll(search.c_str(), replace.c_str());
+		auto newName = TString(_map->GetName()).ReplaceAll(search.c_str(), replace.c_str());
+
+		auto n_axis1 = (TH1F*)_axis1->Clone(newNameX);
+		auto n_axis2 = (TH1F*)_axis1->Clone(newNameY);
+		auto n_map = (TH2F*)_map->Clone(newName);
+
+		n_axis1->SetTitle(TString(n_axis1->GetTitle()).ReplaceAll(search.c_str(), replace.c_str()));
+		n_axis2->SetTitle(TString(n_axis2->GetTitle()).ReplaceAll(search.c_str(), replace.c_str()));
+		n_map->SetTitle(TString(n_map->GetTitle()).ReplaceAll(search.c_str(), replace.c_str()));
+
+		return plot_2d(n_axis1, n_axis2, n_map);
+	}
+
+private:
+	TH1F *_axis1, *_axis2;
+	TH2F *_map;
+
+	plot_2d(TH1F *a1, TH1F *a2, TH2F *m) {
+		_axis1 = a1;
+		_axis2 = a2;
+		_map = m;
+	}
+
+	void Book(const string &name, const string &title,
+		const string &name_1, const string &title_1, int nbinsX, double lowx, double highx,
+		const string &name_2, const string &title_2, int nbinxY, double lowy, double highy) {
+		_axis1 = new TH1F(name_1.c_str(), title_1.c_str(), nbinsX, lowx, highx);
+		_axis2 = new TH1F(name_2.c_str(), title_2.c_str(), nbinsX, lowy, highy);
+		_map = new TH2F(name.c_str(), title.c_str(), nbinsX, lowx, highx, nbinxY, lowy, highy);
+	}
+};
+
 int main()
 {
 	// Config parameters (shoudl be loaded from a file).
-	string dataset = "600_150_plots_10m_50bin_700GeV";
+	string dataset = "600_150_plots_integral_10m_1500GeV_new";
 	double generated_ctau = 1.7; // meters (from the note appendix)
 	double vpion_mass = 150; // GeV.
 
@@ -39,10 +129,12 @@ int main()
 	function<pair<double, double> (void) > generate_lifetime_dual_exp = [ctau]() { return make_pair(gRandom->Exp(ctau), gRandom->Exp(ctau)); };
 
 	function<pair<double, double>(void)> generate_pt_from_final = generate_from_2d_hist(input_file, "Final_events/ana_vpi_pt1_pt2");
+	function<pair<double, double>(void)> generate_pt_from_initial = generate_from_2d_hist(input_file, "MC_Truth/genVpiPt1Pt2");
+	auto pt_axis_binning = get_binning_from_hist(input_file, "MC_Truth/genVpiPt1Pt2");
 
 	// Choose what we will use to do the generation.
 	function<pair<double, double>(void)> generate_lifetime = generate_lifetime_dual_exp;
-	function<pair<double, double>(void)> generate_pt = generate_pt_from_final;
+	function<pair<double, double>(void)> generate_pt = generate_pt_from_initial;
 
 	// The weighting function to use
 	auto weight_lxy = get_2d_lookup_function(input_file, "Final_events/effi_Lxy1_Lxy2");
@@ -55,9 +147,9 @@ int main()
 	auto h_ctau1 = new TH1F("ctau_1", "ctau of vpion 1", 5000, 0.0, 30.0);
 	auto h_ctau2 = make_clone(h_ctau1, "1", "2");
 
-	auto h_pt1 = new TH1F("pt_1", "p_T of vpion 1", 600, 0.0, 600.0);
-	auto h_pt2 = make_clone(h_pt1, "1", "2");
-	auto h_pt_map = new TH2F("pt_map", "p_T map of vpion 1 and 2", 600, 0.0, 600.0, 600, 0.0, 600.0);
+	auto h_pt = plot_2d("raw_pt1_pt2", "p_T_1 vs p_T_2 raw distributions",
+		"raw_pt1", "p_T_1 raw", pt_axis_binning.first,
+		"raw_pt2", "p_T_2 raw", pt_axis_binning.second);
 
 	auto h_lxy1 = new TH1F("lxy1", "lxy of vpion 1", 20*20, 0.0, 20.0);
 	auto h_lxy2 = make_clone(h_lxy1, "1", "2");
@@ -78,10 +170,10 @@ int main()
 
 	auto h_lxy_weight_map = new TH2F("event_weight_map", "Map of efficiencies", 20 * 10, 0.0, 10.0, 20 * 10, 0.0, 10.0);
 	auto h_lxy_map = new TH2F("event_map", "Map of lxy pairs", 20 * 10, 0.0, 10.0, 20 * 10, 0.0, 10.0);
-	auto h_pt_weight_map = make_clone(h_pt_map, "map", "weightmap");
+	auto h_pt_weight = h_pt.Clone("raw", "weighted");
 
 	// Run the toy
-	const int toy_runs = 700000;
+	const int toy_runs = 10000000;
 	double eff_sum = 0.0;
 	for (int i_toy = 0; i_toy < toy_runs; i_toy++) {
 		// We need the pT and the lifetimes of the objects.
@@ -89,10 +181,8 @@ int main()
 		h_ctau1->Fill(lt.first);
 		h_ctau2->Fill(lt.second);
 
-		auto pt = generate_pt();		
-		h_pt1->Fill(pt.first);
-		h_pt2->Fill(pt.second);
-		h_pt_map->Fill(pt.first, pt.second);
+		auto pt = generate_pt();
+		h_pt.Fill(pt);
 
 		// Straight conversion into the actual decay length.
 		auto lxy = calc_lxy(pt, lt, vpion_mass);
@@ -118,7 +208,7 @@ int main()
 				h_lxy1_weight->Fill(lxy.second, event_eff);
 				h_lxy_weight_map->Fill(lxy.first, lxy.second, event_eff);
 				h_lxy_map->Fill(lxy.first, lxy.second);
-				h_pt_weight_map->Fill(pt.first, pt.second, event_eff);
+				h_pt_weight.Fill(pt, event_eff);
 				eff_sum += event_eff;
 			}
 		}
@@ -129,7 +219,8 @@ int main()
 	double sample_eff = eff_sum / toy_runs;
 	cout << "Sample efficiency is " << sample_eff << endl;
 
-	auto total_events_in_sample = get_hist_entries(input_file, "MC_Truth/genHiggsEta");
+	auto total_events_in_sample = get_hist_integral(input_file, "MC_Truth/genVpiPt1Pt2");
+	cout << "Total events in sample " << total_events_in_sample << endl;
 	double expected_events = total_events_in_sample * sample_eff;
 	cout << "Sample expected passing events is " << expected_events << endl;
 
@@ -216,4 +307,15 @@ double get_hist_integral(auto_ptr<TFile> &f, const string &hname)
 		throw runtime_error(string("Unable to load histogram") + hname);
 	}
 	return h->Integral();
+}
+
+// Return the axis binning from a 2D histo.
+pair<axis_binning, axis_binning> get_binning_from_hist(auto_ptr<TFile> &f, const string &hname)
+{
+	auto h = (TH2F*)f->Get(hname.c_str());
+	if (h == nullptr) {
+		throw runtime_error(string("Unable to load histogram") + hname);
+	}
+
+	return make_pair(axis_binning(h, 1), axis_binning(h, 2));
 }

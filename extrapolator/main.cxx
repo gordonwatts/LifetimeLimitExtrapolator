@@ -81,7 +81,7 @@ int main()
 	auto h_pt_weight_map = make_clone(h_pt_map, "map", "weightmap");
 
 	// Run the toy
-	const int toy_runs = 100000;
+	const int toy_runs = 700000;
 	double eff_sum = 0.0;
 	for (int i_toy = 0; i_toy < toy_runs; i_toy++) {
 		// We need the pT and the lifetimes of the objects.
@@ -136,6 +136,7 @@ int main()
 	double actual_events = get_hist_integral(input_file, "Final_events/ana_vpi_Lxy1_Lxy2");
 	double delta = (expected_events - actual_events) / actual_events;
 	cout << "Actual events passing is " << actual_events << "(" << delta << " difference)" << endl;
+	cout << "Actual sample efficiency is " << actual_events / total_events_in_sample << endl;
 
 	// Make sure everything is correctly saved.
 	hist_output->Write();
